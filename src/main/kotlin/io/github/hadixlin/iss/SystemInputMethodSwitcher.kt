@@ -62,6 +62,9 @@ class SystemInputMethodSwitcher
 		delegate.restore()
 	}
 
+	override fun changeLatest() {
+		delegate.changeLatest()
+	}
 	companion object {
 		private const val INPUT_SOURCE_IN_NORMAL = "keep_input_source_in_normal"
 		private const val INPUT_SOURCE_IN_INSERT = "keep_input_source_in_insert"

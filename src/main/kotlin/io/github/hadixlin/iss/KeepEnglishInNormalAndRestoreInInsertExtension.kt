@@ -20,6 +20,8 @@ class KeepEnglishInNormalAndRestoreInInsertExtension : VimExtension {
 		InputMethodAutoSwitcher.restoreInInsert = true
 		InputMethodAutoSwitcher.contextAware =
 			VimPlugin.getVariableService().getGlobalVariableValue(CONTEXT_WARE)?.asBoolean() ?: true
+		InputMethodAutoSwitcher.switchLast =
+			VimPlugin.getVariableService().getGlobalVariableValue(SWITCH_LAST)?.asBoolean() ?: true
 		VimPlugin.getOptionService().setOption(OptionService.Scope.GLOBAL, KeepEnglishInNormalExtension.NAME)
 	}
 
@@ -29,6 +31,7 @@ class KeepEnglishInNormalAndRestoreInInsertExtension : VimExtension {
 
 	companion object {
 		private const val CONTEXT_WARE = "context_aware"
+		private const val SWITCH_LAST = "switch_last"
 		private const val NAME = "keep-english-in-normal-and-restore-in-insert"
 	}
 }

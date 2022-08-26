@@ -1,6 +1,6 @@
 <idea-plugin>
-    <id>IdeaVimExtension</id>
-    <name>IdeaVimExtension</name>
+    <id>MyIdeaVimExtension</id>
+    <name>MyIdeaVimExtension</name>
     <version>1.6.5</version>
 
     <vendor

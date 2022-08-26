@@ -7,6 +7,7 @@ import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.ex.EditorEventMulticasterEx
 import com.intellij.openapi.editor.ex.FocusChangeListener
+import com.intellij.openapi.editor.impl.EditorImpl
 import com.intellij.util.messages.MessageBusConnection
 import com.maddyhome.idea.vim.VimPlugin
 import com.maddyhome.idea.vim.command.CommandState
@@ -14,6 +15,7 @@ import com.maddyhome.idea.vim.listener.VimInsertListener
 import org.apache.commons.lang.StringUtils
 import org.apache.commons.lang3.CharUtils
 import java.lang.Long.MAX_VALUE
+import java.lang.reflect.Field
 import java.util.*
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
@@ -22,135 +24,152 @@ import kotlin.math.max
 import kotlin.math.min
 
 object InputMethodAutoSwitcher {
-	private const val VIM_INSERT_EXIT_MODE_ACTION = "VimInsertExitModeAction"
+    private const val VIM_INSERT_EXIT_MODE_ACTION = "VimInsertExitModeAction"
 
-	private val EDITING_MODES = EnumSet.of(
-		CommandState.Mode.INSERT,
-		CommandState.Mode.REPLACE
-	)
+    private val EDITING_MODES = EnumSet.of(
+            CommandState.Mode.INSERT,
+            CommandState.Mode.REPLACE
+    )
 
-	@Volatile
-	var restoreInInsert: Boolean = false
+    @Volatile
+    var restoreInInsert: Boolean = false
 
-	var contextAware: Boolean = true
+    var contextAware: Boolean = true
 
-	@Volatile
-	var enabled: Boolean = false
-		private set
+    var switchLast: Boolean = true
 
-	private var executor: ThreadPoolExecutor? = null
+    @Volatile
+    var enabled: Boolean = false
+        private set
 
-	private val switcher = SystemInputMethodSwitcher()
+    private var executor: ThreadPoolExecutor? = null
 
-	private var messageBusConnection: MessageBusConnection? = null
+    private val switcher = SystemInputMethodSwitcher()
 
-	private val exitInsertModeListener = object : CommandListener {
-		override fun beforeCommandFinished(commandEvent: CommandEvent) {
-			val commandName = commandEvent.commandName
-			if (StringUtils.isBlank(commandName)) {
-				return
-			}
-			val vimInsertExitModeAction = VIM_INSERT_EXIT_MODE_ACTION
-			if (commandName == vimInsertExitModeAction) {
-				executor?.execute { switcher.storeCurrentThenSwitchToEnglish() }
-				return
-			}
-		}
-	}
-	private val insertListener = object : VimInsertListener {
-		override fun insertModeStarted(editor: Editor) {
-			if (!editor.isInsertMode) {
-				return
-			}
-			if (contextAware) {
-				if (editor.document.charsSequence.isEmpty()) {
-					return
-				}
-				val pos = editor.caretModel.primaryCaret.offset
-				val chars = editor.document.charsSequence.subSequence(
-					max(pos - 1, 0),
-					min(pos + 1, editor.document.textLength - 1)
-				)
-				if (chars.any { CharUtils.isAscii(it) }) {
-					return
-				}
-			}
-			executor?.execute { switcher.restore() }
-		}
-	}
+    private var messageBusConnection: MessageBusConnection? = null
 
-	fun enable() {
-		if (enabled) {
-			return
-		}
-		enabled = true
-		if (executor?.isShutdown != false) {
-			executor = ThreadPoolExecutor(
-				1, 1,
-				MAX_VALUE, TimeUnit.DAYS,
-				ArrayBlockingQueue(10),
-				{ r ->
-					val thread = Thread(r, "ideavim_extension")
-					thread.isDaemon = true
-					thread.priority = Thread.MAX_PRIORITY
-					thread
-				},
-				ThreadPoolExecutor.DiscardPolicy()
-			)
-		}
-		registerExitInsertModeListener()
-		registerFocusChangeListener()
-		if (restoreInInsert) {
-			registerVimInsertListener()
-		}
-	}
+    private val exitInsertModeListener = object : CommandListener {
+        override fun beforeCommandFinished(commandEvent: CommandEvent) {
+            val commandName = commandEvent.commandName
+            if (StringUtils.isBlank(commandName)) {
+                return
+            }
+            val vimInsertExitModeAction = VIM_INSERT_EXIT_MODE_ACTION
+            if (commandName == vimInsertExitModeAction) {
+                executor?.execute { switcher.storeCurrentThenSwitchToEnglish() }
+                return
+            }
+        }
+    }
+    private val insertListener = object : VimInsertListener {
+        override fun insertModeStarted(editor: Editor) {
+            if (!editor.isInsertMode) {
+                return
+            }
+            val state = CommandState.getInstance(editor)
+            if (state.mode !in EDITING_MODES) {
+                return
+            }
 
-	private fun registerExitInsertModeListener() {
-		messageBusConnection = ApplicationManager.getApplication().messageBus.connect()
-		messageBusConnection?.subscribe(CommandListener.TOPIC, exitInsertModeListener)
-	}
+            val lastTypedActionField: Field = EditorImpl::class.java.getDeclaredField("myLastTypedAction")
+            lastTypedActionField.isAccessible = true
+            val lastTypedActionStr: String = lastTypedActionField.get(editor) as String
+            if (lastTypedActionStr !in arrayOf("i", "I", "a", "A", "s", "S", "o", "O")) {
+                return
+            }
+            if (contextAware) {
+                if (editor.document.charsSequence.isEmpty()) {
+                    return
+                }
+                val pos = editor.caretModel.primaryCaret.offset
+                val chars = editor.document.charsSequence.subSequence(
+                        max(pos - 1, 0),
+                        min(pos + 1, editor.document.textLength - 1)
+                )
+                if (chars.any { CharUtils.isAscii(it) }) {
+                    return
+                }
+            }
+            if (switchLast) {
+                executor?.execute { switcher.changeLatest() }
+                return
+            }
+            executor?.execute { switcher.restore() }
+        }
+    }
 
-	private fun unregisterExitInsertModeListener() {
-		messageBusConnection?.disconnect()
-	}
+    fun enable() {
+        if (enabled) {
+            return
+        }
+        enabled = true
+        if (executor?.isShutdown != false) {
+            executor = ThreadPoolExecutor(
+                    1, 1,
+                    MAX_VALUE, TimeUnit.DAYS,
+                    ArrayBlockingQueue(10),
+                    { r ->
+                        val thread = Thread(r, "ideavim_extension")
+                        thread.isDaemon = true
+                        thread.priority = Thread.MAX_PRIORITY
+                        thread
+                    },
+                    ThreadPoolExecutor.DiscardPolicy()
+            )
+        }
+        registerExitInsertModeListener()
+        registerFocusChangeListener()
+        if (restoreInInsert) {
+            registerVimInsertListener()
+        }
+    }
 
-	private fun registerVimInsertListener() {
-		VimPlugin.getChange().addInsertListener(insertListener)
-	}
+    private fun registerExitInsertModeListener() {
+        messageBusConnection = ApplicationManager.getApplication().messageBus.connect()
+        messageBusConnection?.subscribe(CommandListener.TOPIC, exitInsertModeListener)
+    }
 
-	private fun unregisterVimInsertListener() {
-		VimPlugin.getChange().removeInsertListener(insertListener)
-	}
+    private fun unregisterExitInsertModeListener() {
+        messageBusConnection?.disconnect()
+    }
 
-	private fun registerFocusChangeListener() {
-		val eventMulticaster =
-			EditorFactory.getInstance().eventMulticaster as? EditorEventMulticasterEx ?: return
-		eventMulticaster.addFocusChangeListener(focusListener) {}
-	}
+    private fun registerVimInsertListener() {
+        VimPlugin.getChange().addInsertListener(insertListener)
+    }
 
-	private val focusListener = object : FocusChangeListener {
+    private fun unregisterVimInsertListener() {
+        VimPlugin.getChange().removeInsertListener(insertListener)
+    }
 
-		override fun focusLost(editor: Editor) {}
+    private fun registerFocusChangeListener() {
+        val eventMulticaster =
+                EditorFactory.getInstance().eventMulticaster as? EditorEventMulticasterEx ?: return
+        eventMulticaster.addFocusChangeListener(focusListener) {}
+    }
 
-		override fun focusGained(editor: Editor) {
-			if (!enabled || !VimPlugin.isEnabled()) {
-				return
-			}
-			val state = CommandState.getInstance(editor)
-			if (state.mode !in EDITING_MODES) {
-				executor?.execute { switcher.switchToEnglish() }
-			}
-		}
-	}
+    private val focusListener = object : FocusChangeListener {
+
+        override fun focusLost(editor: Editor) {}
+
+        override fun focusGained(editor: Editor) {
+            if (!enabled || !VimPlugin.isEnabled()) {
+                return
+            }
+            val state = CommandState.getInstance(editor)
+            if (state.mode !in EDITING_MODES) {
+                executor?.execute { switcher.switchToEnglish() }
+            }
+        }
+    }
 
 
-	fun disable() {
-		if (!enabled) {
-			return
-		}
-		unregisterVimInsertListener()
-		unregisterExitInsertModeListener()
-		executor?.shutdown()
-		enabled = false
-	}
+    fun disable() {
+        if (!enabled) {
+            return
+        }
+        unregisterVimInsertListener()
+        unregisterExitInsertModeListener()
+        executor?.shutdown()
+        enabled = false
+    }
 }

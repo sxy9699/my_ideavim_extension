@@ -48,6 +48,10 @@ class MacInputMethodSwitcher(
 		switchInputSource(nonEnglish)
 	}
 
+	override fun changeLatest() {
+		TODO("Not yet implemented")
+	}
+
 	companion object {
 		private const val KEY_LAYOUT_US = "com.apple.keylayout.US"
 		private const val KEY_LAYOUT_ABC = "com.apple.keylayout.ABC"

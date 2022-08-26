@@ -14,6 +14,9 @@ class LinFcitxRemoteSwitcher : InputMethodSwitcher {
 		execFcitxRemote(FCITX_ACTIVE)
 	}
 
+	override fun changeLatest() {
+		TODO("Not yet implemented")
+	}
 	override fun switchToEnglish() {
 		execFcitxRemote(FCITX_INACTIVE)
 	}
