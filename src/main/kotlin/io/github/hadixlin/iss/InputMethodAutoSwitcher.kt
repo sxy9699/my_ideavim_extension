@@ -71,15 +71,15 @@ object InputMethodAutoSwitcher {
                 return
             }
 
-//            val lastTypedActionField: Field = EditorImpl::class.java.getDeclaredField("myLastTypedAction")
-//            lastTypedActionField.isAccessible = true
-//            if (lastTypedActionField.get(editor) == null) {
-//                return
-//            }
-//            val lastTypedActionStr: String = lastTypedActionField.get(editor) as String
-//            if (lastTypedActionStr !in arrayOf("i", "I", "a", "A", "s", "S", "o", "O")) {
-//                return
-//            }
+            val lastTypedActionField: Field = EditorImpl::class.java.getDeclaredField("myLastTypedAction")
+            lastTypedActionField.isAccessible = true
+            if (lastTypedActionField.get(editor) == null) {
+                return
+            }
+            val lastTypedActionStr: String = lastTypedActionField.get(editor) as String
+            if (lastTypedActionStr !in arrayOf("i", "I", "a", "A", "s", "S", "o", "O")) {
+                return
+            }
             if (contextAware) {
                 if (editor.document.charsSequence.isEmpty()) {
                     return
